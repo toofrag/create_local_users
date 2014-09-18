@@ -58,7 +58,7 @@ def set_password_policy(lusername,lpolicy):
     else:
         return True
 
-def create_user(user_name,user_UID,user_GID,user_RealName):
+def create_user(user_name,user_UID,user_GID,user_RealName,password):
     try:
         dscl_create(user_name)
         dscl_create(user_name,"dsAttrTypeNative:_defaultLanguage","en")
@@ -71,7 +71,7 @@ def create_user(user_name,user_UID,user_GID,user_RealName):
         dscl_create(user_name,"UniqueID",user_UID)
         dscl_create(user_name,"PrimaryGroupID",user_GID)
         dscl_create(user_name,"RealName",user_RealName)
-        dscl_create(user_name,"123456",password=True)
+        dscl_create(user_name,password,password=True)
         dscl_create(user_name,"NFSHomeDirectory","/Users/{}".format(user_name))
         dscl_create(user_name,"AuthenticationHint","Enter your standard Sanger password")
     except Exception as e:
@@ -150,9 +150,20 @@ if __name__ == '__main__':
     if os.getuid() != 0:
         print("This has to be run as root")
         exit()
-    # Globals
-    standardGroupList=["staff","_developer"]
+
+    ###### Defaults
+    # List containing each group the account should be added to
+    standardGroupList=["staff","_lpadmin"]
+    # Full path to the log file
     logfile = "/Library/Logs/create_local_users.log"
+    # String containing the password policy settings.
+    # See man pwpolicy for details
+    password_policy="requiresAlpha=1 requiresNumeric=1 minChars=8 maxChars=20 newPasswordRequired=1"
+    # Default password that new accounts will get
+    default_password="123456"
+    # Default GID the users will get
+    default_group="20"
+    ######
 
     # Command line arguments
     parser = argparse.ArgumentParser()
@@ -199,10 +210,10 @@ if __name__ == '__main__':
     # Main loop
     #
     for username_to_create in usernames_to_create:
-        user_gathered_info={}
-        user_gathered_info['RealName']=username_to_create["userid"]
-        user_gathered_info['UID']=str(get_new_unused_uid(get_local_uids()))
-        user_gathered_info['GID']="20"
+        user_info={}
+        user_info['RealName']=username_to_create["userid"]
+        user_info['UID']=str(get_new_unused_uid(get_local_uids()))
+        user_info['GID']=default_group
 
         # Check if account exists on machine
         if check_user_exists(username_to_create["userid"]):
@@ -214,8 +225,8 @@ if __name__ == '__main__':
                 continue
 
         # Actually create the user account
-        logging.info("Creating {0} ({1})".format(user_gathered_info['RealName'],username_to_create["userid"]))
-        create_user(username_to_create["userid"],user_gathered_info['UID'],user_gathered_info['GID'],user_gathered_info["RealName"])
+        logging.info("Creating {0} ({1})".format(user_info['RealName'],username_to_create["userid"]))
+        create_user(username_to_create["userid"],user_info['UID'],user_info['GID'],user_info["RealName"],default_password)
 
         ## Add user to groups
         # Copy the standard group list then add admin if requested
@@ -232,6 +243,6 @@ if __name__ == '__main__':
         # Set the password policy
         logging.info("Setting Password policy")
         try:
-            set_password_policy(username_to_create["userid"],"requiresAlpha=1 requiresNumeric=1 minChars=8 maxChars=20 newPasswordRequired=1")
+            set_password_policy(username_to_create["userid"],password_policy)
         except:
             logging.error("Unable to set policy")
